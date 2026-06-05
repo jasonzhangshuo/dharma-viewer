@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dharma Tools Demo</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Dharma 本地学习工作台</p>
+        <h1 id="appTitle">Dharma Viewer</h1>
+      </div>
+      <div class="topbar-actions">
+        <a class="topbar-link" href="/library" id="libraryLink">学习库</a>
+        <div class="status" id="status">加载学习材料中...</div>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="source-pane" aria-label="原文">
+        <div class="pane-header">
+          <div>
+            <p class="pane-kicker">左侧材料</p>
+            <h2>学习文本</h2>
+          </div>
+          <input id="sourceSearch" type="search" placeholder="搜索原文" />
+        </div>
+        <div class="pane-tabs" role="tablist" aria-label="左侧材料">
+          <button id="sourceTab" class="pane-tab is-active" type="button">原文</button>
+          <button id="auxiliaryTab" class="pane-tab" type="button">辅助材料</button>
+        </div>
+        <div id="sourceContent" class="source-content"></div>
+        <div id="auxiliaryContent" class="auxiliary-content" hidden></div>
+      </section>
+
+      <section class="analysis-pane" aria-label="分析">
+        <div class="pane-header">
+          <div>
+            <p class="pane-kicker">右侧分析</p>
+            <h2>学习材料</h2>
+          </div>
+          <select id="analysisSelect" aria-label="选择分析文档"></select>
+        </div>
+
+        <div class="evidence-panel">
+          <div class="evidence-title">可定位原文</div>
+          <div id="evidenceList" class="evidence-list"></div>
+        </div>
+
+        <article id="analysisContent" class="analysis-content"></article>
+      </section>
+
+      <aside class="chat-pane" aria-label="Codex 对话">
+        <div class="pane-header chat-header">
+          <div>
+            <p class="pane-kicker">右侧问答</p>
+            <h2 id="chatTitle">Codex Chat</h2>
+          </div>
+          <div class="chat-controls">
+            <select id="chatProviderSelect" class="provider-select" aria-label="选择问答模型">
+              <option value="codex">Codex</option>
+              <option value="hermes">Hermes</option>
+              <option value="claude">Claude Code</option>
+              <option value="openclaw">OpenClaw</option>
+            </select>
+            <div id="chatSessionBadge" class="chat-session">新会话</div>
+          </div>
+        </div>
+
+        <div class="pane-tabs" role="tablist" aria-label="右侧面板">
+          <button id="chatTab" class="pane-tab is-active" type="button">问 Codex</button>
+          <button id="notesTab" class="pane-tab" type="button">我的笔记 <span id="noteCount">0</span></button>
+        </div>
+
+        <div id="chatMessages" class="chat-messages">
+          <div class="chat-empty">划选左侧原文或中间分析后加入提问。</div>
+        </div>
+
+        <div id="notesPanel" class="notes-panel" hidden></div>
+
+        <form id="chatForm" class="chat-composer">
+          <div id="selectedContexts" class="selected-contexts"></div>
+          <textarea id="chatInput" rows="4" placeholder="问 Codex..." aria-label="向 AI 提问"></textarea>
+          <div class="composer-actions">
+            <button id="clearContexts" class="secondary-button" type="button">清空引用</button>
+            <button id="sendChat" class="primary-button" type="submit">发送</button>
+          </div>
+        </form>
+      </aside>
+    </main>
+
+    <div id="selectionToolbar" class="selection-toolbar" hidden>
+      <button id="addContextFromSelection" type="button">加入提问</button>
+      <button id="saveNoteFromSelection" type="button">收藏笔记</button>
+    </div>
+
+    <script>window.DHARMA_STATIC_VIEWER = true;</script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
