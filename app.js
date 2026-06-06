@@ -1117,6 +1117,13 @@ function renderMarkdown(markdown, evidence, options = {}) {
       continue;
     }
 
+    if (/^-{3,}$/.test(line)) {
+      closeList();
+      closeSection();
+      html.push("<hr>");
+      continue;
+    }
+
     if (line.startsWith("# ")) {
       closeList();
       closeSection();
