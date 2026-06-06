@@ -5,12 +5,12 @@
   "workspaces": [
     {
       "workspace": "慈经的修行第06课",
-      "title": "学习总地图（dharma-fudao-fast V2）",
-      "latestRunId": "02-study-map-v2",
+      "title": "学习总地图（备课版 V2.1）",
+      "latestRunId": "03-study-map-v2-beike",
       "latestUrl": "#view/%E6%85%88%E7%BB%8F%E7%9A%84%E4%BF%AE%E8%A1%8C%E7%AC%AC06%E8%AF%BE/latest",
-      "runCount": 3,
+      "runCount": 4,
       "noteCount": 0,
-      "updatedAt": "2026-06-05T16:23:40.301Z",
+      "updatedAt": "2026-06-06T00:51:26.215Z",
       "sourcePath": "static://慈经的修行第06课/source"
     },
     {
