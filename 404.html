@@ -28,12 +28,14 @@
           </div>
           <input id="sourceSearch" type="search" placeholder="搜索原文" />
         </div>
-        <div class="pane-tabs" role="tablist" aria-label="左侧材料">
-          <button id="sourceTab" class="pane-tab is-active" type="button">原文</button>
-          <button id="auxiliaryTab" class="pane-tab" type="button">辅助材料</button>
+        <div id="sourceTabs" class="pane-tabs" role="tablist" aria-label="左侧材料">
+          <a id="sourceTab" class="pane-tab is-active" href="#source-original" data-source-panel="source">原文</a>
+          <a id="auxiliaryTab" class="pane-tab" href="#source-auxiliary" data-source-panel="auxiliary">辅助材料</a>
+          <a id="mindmapTab" class="pane-tab" href="#source-mindmap" data-source-panel="mindmap" hidden>思维导图</a>
         </div>
         <div id="sourceContent" class="source-content"></div>
         <div id="auxiliaryContent" class="auxiliary-content" hidden></div>
+        <div id="mindmapContent" class="mindmap-content" hidden></div>
       </section>
 
       <section class="analysis-pane" aria-label="分析">
@@ -95,9 +97,9 @@
     <div id="selectionToolbar" class="selection-toolbar" hidden>
       <button id="addContextFromSelection" type="button">加入提问</button>
       <button id="saveNoteFromSelection" type="button">收藏笔记</button>
+      <button id="saveFeedbackFromSelection" type="button" hidden>标注校准</button>
     </div>
 
-    <script>window.DHARMA_STATIC_VIEWER = true;</script>
-    <script type="module" src="app.js"></script>
+    <script type="module" src="/app.js?v=20260613-mindmap-tabs"></script>
   </body>
 </html>

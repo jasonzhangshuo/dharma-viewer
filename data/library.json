@@ -4,34 +4,34 @@
   "viewerRoot": "static-export",
   "workspaces": [
     {
-      "workspace": "慈经的修行第06课",
-      "title": "学习总地图（Hermes V2）",
-      "latestRunId": "04-study-map-hermes-v2",
-      "latestUrl": "#view/%E6%85%88%E7%BB%8F%E7%9A%84%E4%BF%AE%E8%A1%8C%E7%AC%AC06%E8%AF%BE/latest",
+      "workspace": "同喜复习课辅导员-review-001",
+      "title": "Hermes｜同喜复习课（一）复习课流程总表",
+      "latestRunId": "hermes-00-review-flow",
+      "latestUrl": "#view/%E5%90%8C%E5%96%9C%E5%A4%8D%E4%B9%A0%E8%AF%BE%E8%BE%85%E5%AF%BC%E5%91%98-review-001/latest",
       "runCount": 5,
       "noteCount": 0,
-      "updatedAt": "2026-06-06T01:11:35.482Z",
-      "sourcePath": "static://慈经的修行第06课/source"
+      "updatedAt": "2026-06-16T23:15:03.174347Z",
+      "sourcePath": "static://同喜复习课辅导员-review-001/source"
     },
     {
-      "workspace": "信仰与人生第05课",
-      "title": "交流题4：本课疑惑讨论",
-      "latestRunId": "11-r4-yiwen-taolun",
-      "latestUrl": "#view/%E4%BF%A1%E4%BB%B0%E4%B8%8E%E4%BA%BA%E7%94%9F%E7%AC%AC05%E8%AF%BE/latest",
-      "runCount": 13,
-      "noteCount": 0,
-      "updatedAt": "2026-05-27T11:40:52.458Z",
-      "sourcePath": "static://信仰与人生第05课/source"
-    },
-    {
-      "workspace": "认识人格密码第08课",
-      "title": "学习总地图：认识人格密码，开启八三禅修",
+      "workspace": "生命的学习方法八步骤第07课",
+      "title": "Hermes｜第7课《生命的学习方法——八步骤》学习总地图",
       "latestRunId": "00-study-map",
-      "latestUrl": "#view/%E8%AE%A4%E8%AF%86%E4%BA%BA%E6%A0%BC%E5%AF%86%E7%A0%81%E7%AC%AC08%E8%AF%BE/latest",
+      "latestUrl": "#view/%E7%94%9F%E5%91%BD%E7%9A%84%E5%AD%A6%E4%B9%A0%E6%96%B9%E6%B3%95%E5%85%AB%E6%AD%A5%E9%AA%A4%E7%AC%AC07%E8%AF%BE/latest",
       "runCount": 1,
       "noteCount": 0,
-      "updatedAt": "2026-05-27T01:48:37.032Z",
-      "sourcePath": "static://认识人格密码第08课/source"
+      "updatedAt": "2026-06-13T22:31:44.205Z",
+      "sourcePath": "static://生命的学习方法八步骤第07课/source"
+    },
+    {
+      "workspace": "入菩萨行论个人自修-lesson-011",
+      "title": "《入菩萨行论》第十一课学习总地图",
+      "latestRunId": "00-study-map",
+      "latestUrl": "#view/%E5%85%A5%E8%8F%A9%E8%90%A8%E8%A1%8C%E8%AE%BA%E4%B8%AA%E4%BA%BA%E8%87%AA%E4%BF%AE-lesson-011/latest",
+      "runCount": 5,
+      "noteCount": 0,
+      "updatedAt": "2026-06-07T02:57:57.304327+00:00",
+      "sourcePath": "static://入菩萨行论个人自修-lesson-011/source"
     }
   ]
 }

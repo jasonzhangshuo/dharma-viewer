@@ -5,6 +5,16 @@ const CHAT_PROVIDERS = {
   openclaw: { label: "OpenClaw", title: "OpenClaw Chat", ask: "问 OpenClaw", thinking: "已发送给 OpenClaw，正在思考..." },
 };
 
+const FEEDBACK_LABELS = [
+  { id: "hit-me", label: "命中我" },
+  { id: "summary-taste", label: "总结味" },
+  { id: "dharma-inaccurate", label: "法义不准" },
+  { id: "too-abstract", label: "太抽象" },
+  { id: "insightful", label: "有启发" },
+  { id: "keep", label: "可保留" },
+  { id: "rewrite", label: "要重写" },
+];
+
 const state = {
   data: null,
   activeDocId: null,
@@ -14,6 +24,7 @@ const state = {
   agentSessionId: "",
   chatMessages: [],
   notes: [],
+  relatedNotes: { currentNotes: [], relatedNotes: [] },
   noteDraft: null,
   editingNoteId: "",
   activeSidePanel: "chat",
@@ -26,6 +37,7 @@ const STATIC_VIEWER = Boolean(window.DHARMA_STATIC_VIEWER);
 const workspace = document.querySelector(".workspace");
 const sourceContent = document.querySelector("#sourceContent");
 const auxiliaryContent = document.querySelector("#auxiliaryContent");
+const mindmapContent = document.querySelector("#mindmapContent");
 const analysisContent = document.querySelector("#analysisContent");
 const analysisSelect = document.querySelector("#analysisSelect");
 const evidenceList = document.querySelector("#evidenceList");
@@ -44,8 +56,11 @@ const chatSessionBadge = document.querySelector("#chatSessionBadge");
 const selectionToolbar = document.querySelector("#selectionToolbar");
 const addContextFromSelection = document.querySelector("#addContextFromSelection");
 const saveNoteFromSelection = document.querySelector("#saveNoteFromSelection");
+const saveFeedbackFromSelection = document.querySelector("#saveFeedbackFromSelection");
 const sourceTab = document.querySelector("#sourceTab");
 const auxiliaryTab = document.querySelector("#auxiliaryTab");
+const mindmapTab = document.querySelector("#mindmapTab");
+const sourceTabs = document.querySelector("#sourceTabs");
 const chatTab = document.querySelector("#chatTab");
 const notesTab = document.querySelector("#notesTab");
 const noteCount = document.querySelector("#noteCount");
@@ -56,6 +71,11 @@ init();
 
 if (STATIC_VIEWER) {
   window.addEventListener("hashchange", () => init());
+} else {
+  window.addEventListener("hashchange", () => {
+    const panel = sourcePanelFromHash();
+    if (panel) switchSourcePanel(panel);
+  });
 }
 
 async function init() {
@@ -78,8 +98,8 @@ async function init() {
     renderAnalysisOptions(state.data.analysis);
     renderActiveAnalysis();
     renderSelectedContexts();
-    renderChatSession();
     renderChatProvider();
+    renderChatSession();
     renderStaticMode();
     await loadNotes();
     renderSidePanel();
@@ -94,9 +114,15 @@ async function initLibrary() {
   const response = await fetch(STATIC_VIEWER ? "data/library.json" : "/api/library");
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const library = await response.json();
+  const noteIndex = STATIC_VIEWER ? { notes: [] } : await fetchNoteIndex();
   appTitle.textContent = "学习库";
   status.textContent = `已扫描：${library.viewerRoot}`;
-  renderLibrary(library);
+  renderLibrary(library, noteIndex);
+}
+
+async function fetchNoteIndex() {
+  const response = await fetch("/api/notes");
+  return response.ok ? response.json() : { notes: [] };
 }
 
 function isLibraryRoute() {
@@ -123,8 +149,9 @@ function staticRoute() {
   return { type: "view", workspace: match[1], runId: match[2] };
 }
 
-function renderLibrary(library) {
+function renderLibrary(library, noteIndex = { notes: [] }) {
   const items = Array.isArray(library.workspaces) ? library.workspaces : [];
+  const noteSummary = renderLibraryNotesSummary(library, noteIndex);
   workspace.className = "library-workspace";
   workspace.innerHTML = `
     <section class="library-hero">
@@ -132,6 +159,7 @@ function renderLibrary(library) {
       <h2>从这里回到任意一课的学习现场</h2>
       <p>每个课程入口会打开最新发布的分析页；历史分析和我的笔记仍按 workspace 保存在本地。</p>
     </section>
+    ${noteSummary}
     ${
       items.length
         ? `<section class="library-grid">${items.map((item) => renderLibraryCard(item)).join("")}</section>`
@@ -140,6 +168,35 @@ function renderLibrary(library) {
             <p>先发布一次 viewer run，这里就会出现课程入口。</p>
           </section>`
     }
+  `;
+}
+
+function renderLibraryNotesSummary(library, noteIndex) {
+  const noteCount = Number(library.noteCount || noteIndex.noteCount || 0);
+  if (!noteCount) return "";
+  const recentNotes = (Array.isArray(noteIndex.notes) ? noteIndex.notes : []).slice(0, 5);
+
+  return `
+    <section class="library-hero library-notes-summary">
+      <p class="pane-kicker">我的学习笔记</p>
+      <h2>全部笔记</h2>
+      <p>已保存 ${noteCount} 条个人修学笔记。打开课程可查看本课笔记、候选照见和相关历史笔记。</p>
+      ${
+        recentNotes.length
+          ? `<div class="library-note-list">${recentNotes.map(renderLibraryNoteItem).join("")}</div>`
+          : ""
+      }
+    </section>
+  `;
+}
+
+function renderLibraryNoteItem(note) {
+  return `
+    <a class="library-note-item" href="${escapeHtml(note.latestUrl || `/view/${encodeURIComponent(note.workspace || "")}/latest`)}">
+      <span>${escapeHtml(note.workspaceTitle || note.workspace || "课程笔记")}</span>
+      <strong>${escapeHtml(compactText(note.text || note.comment || "", 82))}</strong>
+      <time>${formatDateTime(note.updatedAt || note.createdAt)}</time>
+    </a>
   `;
 }
 
@@ -212,10 +269,37 @@ saveNoteFromSelection.addEventListener("click", async () => {
   window.getSelection()?.removeAllRanges();
 });
 
-sourceTab.addEventListener("click", () => switchSourcePanel("source"));
-auxiliaryTab.addEventListener("click", () => switchSourcePanel("auxiliary"));
+saveFeedbackFromSelection.addEventListener("click", async () => {
+  if (!state.pendingSelection || state.pendingSelection.kind !== "analysis") return;
+  openFeedbackDraft({
+    text: state.pendingSelection.text,
+    quote: state.pendingSelection.text,
+  });
+  selectionToolbar.hidden = true;
+  window.getSelection()?.removeAllRanges();
+});
+
+sourceTabs.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+  const button = target?.closest("[data-source-panel]");
+  if (!button || !sourceTabs.contains(button)) return;
+  event.preventDefault();
+  const panel = switchSourcePanel(button.dataset.sourcePanel);
+  updateSourcePanelHash(panel);
+});
 chatTab.addEventListener("click", () => switchSidePanel("chat"));
 notesTab.addEventListener("click", () => switchSidePanel("notes"));
+
+chatProviderSelect.addEventListener("change", () => {
+  const nextProvider = normalizeChatProvider(chatProviderSelect.value);
+  if (nextProvider === state.chatProvider) return;
+  state.chatProvider = nextProvider;
+  state.agentSessionId = "";
+  localStorage.setItem("dharma-chat-provider", state.chatProvider);
+  renderChatProvider();
+  renderChatSession();
+  appendChatMessage("system", `已切换到 ${providerLabel()}，将从新会话开始。`);
+});
 
 clearContexts.addEventListener("click", () => {
   state.selectedContexts = [];
@@ -242,10 +326,12 @@ function renderSource(sections) {
           ${section.paragraphs
             .map(
               (paragraph) => `
-                <p class="paragraph" id="${paragraph.id}" data-page-label="${formatPageLabel(
+                <p class="paragraph ${sourceParagraphClass(paragraph)}" id="${paragraph.id}" data-kind="${
+                  sourceParagraphKind(paragraph)
+                }" data-page-label="${formatPageLabel(
                   paragraph.pageNumbers ?? [paragraph.pageNumber]
                 )}" data-raw-text="${escapeHtml(paragraph.text)}" title="原 PDF：${formatPageLabel(paragraph.pageNumbers ?? [paragraph.pageNumber])}">
-                  <span class="source-text">${formatSourceParagraph(paragraph.text)}</span>
+                  <span class="source-text">${formatSourceParagraph(paragraph.text, sourceParagraphKind(paragraph))}</span>
                 </p>
               `
             )
@@ -257,24 +343,130 @@ function renderSource(sections) {
 }
 
 function renderAuxiliaryMaterials(materials) {
-  if (!materials.length) {
-    auxiliaryContent.innerHTML = `<div class="auxiliary-empty">暂无可展示的辅助材料。</div>`;
-    return;
+  const auxiliaryMaterials = materials.filter((item) => item.role !== "mindmap");
+  const mindmapMaterials = materials.filter((item) => item.role === "mindmap");
+
+  mindmapTab.hidden = mindmapMaterials.length === 0;
+  if (state.activeSourcePanel === "mindmap" && mindmapMaterials.length === 0) {
+    state.activeSourcePanel = "source";
   }
 
-  auxiliaryContent.innerHTML = materials
-    .map(
-      (item) => `
-        <article class="auxiliary-card">
-          <div class="auxiliary-heading">
-            <h3>${escapeHtml(item.title || "辅助材料")}</h3>
-            ${item.summary ? `<p>${escapeHtml(item.summary)}</p>` : ""}
-          </div>
-          <div class="auxiliary-text">${renderAuxiliaryBlocks(item.blocks || [], item.content || "")}</div>
-        </article>
-      `
-    )
-    .join("");
+  if (!auxiliaryMaterials.length) {
+    auxiliaryContent.innerHTML = `<div class="auxiliary-empty">暂无可展示的辅助材料。</div>`;
+  } else {
+    auxiliaryContent.innerHTML = auxiliaryMaterials
+      .map(
+        (item) => `
+          <article class="auxiliary-card">
+            <div class="auxiliary-heading">
+              <h3>${escapeHtml(item.title || "辅助材料")}</h3>
+              ${item.summary ? `<p>${escapeHtml(item.summary)}</p>` : ""}
+            </div>
+            <div class="auxiliary-text">${renderAuxiliaryBlocks(item.blocks || [], item.content || "")}</div>
+          </article>
+        `
+      )
+      .join("");
+  }
+
+  mindmapContent.innerHTML = mindmapMaterials.length
+    ? mindmapMaterials.map(renderMindmapMaterial).join("")
+    : `<div class="auxiliary-empty">暂无可展示的思维导图。</div>`;
+
+  switchSourcePanel(sourcePanelFromHash() || state.activeSourcePanel);
+}
+
+function renderMindmapMaterial(item) {
+  return `
+    <article class="mindmap-card">
+      <div class="auxiliary-heading">
+        <h3>${escapeHtml(item.title || "思维导图")}</h3>
+      </div>
+      <div class="mindmap-tree">${renderMindmapTree(item.content || item.markdown || "")}</div>
+    </article>
+  `;
+}
+
+function renderMindmapTree(value) {
+  const tree = parseMindmapMarkdown(value);
+  if (!tree.length) return renderPlainText(value);
+  return tree.map(renderMindmapNode).join("");
+}
+
+function parseMindmapMarkdown(value) {
+  const lines = String(value ?? "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^识别(?:来源|状态)[:：]/.test(line));
+
+  const root = [];
+  const stack = [{ level: 0, children: root }];
+
+  for (const line of lines) {
+    if (/^#\s+/.test(line)) continue;
+    const heading = line.match(/^(#{2,4})\s+(.+)$/);
+    const headingText = heading?.[2]?.trim() || "";
+    if (/^(可用于|与辅助材料)/.test(headingText)) break;
+
+    const numbered = line.match(/^([0-9]+)[.．]\s*(.+)$/);
+    const bullet = line.match(/^[-*]\s+(.+)$/);
+    const plainTitle = line.match(/^(总主题|主线分为两大块)[:：]\s*(.*)$/);
+
+    let level = 3;
+    let text = line;
+    let kind = "note";
+
+    if (heading) {
+      level = heading[1].length - 1;
+      text = heading[2].trim();
+      kind = level <= 1 ? "root" : "branch";
+    } else if (numbered) {
+      level = 4;
+      text = numbered[2].trim();
+      kind = "leaf";
+    } else if (bullet) {
+      level = 4;
+      text = bullet[1].trim();
+      kind = "leaf";
+    } else if (plainTitle) {
+      level = 2;
+      text = plainTitle[2] ? `${plainTitle[1]}：${plainTitle[2]}` : plainTitle[1];
+      kind = "branch";
+    } else if (/^同喜复习课/.test(line)) {
+      level = 2;
+      kind = "branch";
+    }
+
+    const node = { text, kind, children: [] };
+    while (stack.length > 1 && stack.at(-1).level >= level) stack.pop();
+    stack.at(-1).children.push(node);
+    stack.push({ level, children: node.children });
+  }
+
+  return root;
+}
+
+function renderMindmapNode(node) {
+  const parts = splitMindmapNodeText(node.text);
+  const hasChildren = node.children?.length;
+  return `
+    <div class="mindmap-node mindmap-node-${escapeHtml(node.kind || "note")}">
+      <div class="mindmap-node-content">
+        ${parts.label ? `<strong>${escapeHtml(parts.label)}</strong>` : ""}
+        <span>${linkifyPlainText(parts.body)}</span>
+      </div>
+      ${hasChildren ? `<div class="mindmap-children">${node.children.map(renderMindmapNode).join("")}</div>` : ""}
+    </div>
+  `;
+}
+
+function splitMindmapNodeText(text) {
+  const value = String(text || "").trim();
+  const match = value.match(/^([^：:]{2,24})[：:]\s*(.+)$/);
+  if (!match) return { label: "", body: value };
+  return { label: match[1], body: match[2] };
 }
 
 function renderAuxiliaryBlocks(blocks, fallbackContent) {
@@ -350,7 +542,10 @@ function captureReadableSelection() {
 
   const range = selection.rangeCount ? selection.getRangeAt(0) : null;
   if (!range) return;
-  const sourceElement = closestWithin(range.commonAncestorContainer, sourceContent) || closestWithin(range.commonAncestorContainer, auxiliaryContent);
+  const sourceElement =
+    closestWithin(range.commonAncestorContainer, sourceContent) ||
+    closestWithin(range.commonAncestorContainer, auxiliaryContent) ||
+    closestWithin(range.commonAncestorContainer, mindmapContent);
   const analysisElement = closestWithin(range.commonAncestorContainer, analysisContent);
   const chatElement = closestWithin(range.commonAncestorContainer, chatMessages);
   if (!sourceElement && !analysisElement && !chatElement) {
@@ -362,9 +557,10 @@ function captureReadableSelection() {
     kind: sourceElement ? "source" : analysisElement ? "analysis" : "chat",
     text: text.slice(0, 1600),
   };
+  saveFeedbackFromSelection.hidden = state.pendingSelection.kind !== "analysis";
 
   const rect = range.getBoundingClientRect();
-  selectionToolbar.style.left = `${Math.min(window.innerWidth - 120, Math.max(12, rect.left + rect.width / 2 - 48))}px`;
+  selectionToolbar.style.left = `${Math.min(window.innerWidth - 220, Math.max(12, rect.left + rect.width / 2 - 88))}px`;
   selectionToolbar.style.top = `${Math.max(12, rect.top - 42)}px`;
   selectionToolbar.hidden = false;
 }
@@ -633,11 +829,32 @@ async function loadNotes() {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload?.error || `HTTP ${response.status}`);
     state.notes = Array.isArray(payload.notes) ? payload.notes : [];
+    await loadRelatedNotes();
   } catch (error) {
     state.notes = [];
+    state.relatedNotes = { currentNotes: [], relatedNotes: [] };
     appendChatMessage("system", `加载笔记失败：${error instanceof Error ? error.message : "未知错误"}`);
   }
   renderNotes();
+}
+
+async function loadRelatedNotes() {
+  const params = new URLSearchParams();
+  currentNoteThemes().forEach((theme) => params.append("theme", theme));
+  const url = `${relatedNotesApiUrl()}${params.toString() ? `?${params.toString()}` : ""}`;
+
+  try {
+    const response = await fetch(url);
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload?.error || `HTTP ${response.status}`);
+    state.relatedNotes = {
+      currentNotes: Array.isArray(payload.currentNotes) ? payload.currentNotes : [],
+      relatedNotes: Array.isArray(payload.relatedNotes) ? payload.relatedNotes : [],
+    };
+  } catch (error) {
+    state.relatedNotes = { currentNotes: [], relatedNotes: [] };
+    appendChatMessage("system", `加载相关笔记失败：${error instanceof Error ? error.message : "未知错误"}`);
+  }
 }
 
 async function saveNote(note) {
@@ -663,6 +880,7 @@ async function saveNote(note) {
     const result = await response.json();
     if (!response.ok) throw new Error(result?.error || `HTTP ${response.status}`);
     state.notes = [result.note, ...state.notes.filter((item) => item.id !== result.note.id)];
+    await loadRelatedNotes();
     renderNotes();
   } catch (error) {
     appendChatMessage("system", `保存笔记失败：${error instanceof Error ? error.message : "未知错误"}`);
@@ -680,6 +898,7 @@ async function deleteNote(noteId) {
     const result = await response.json();
     if (!response.ok) throw new Error(result?.error || `HTTP ${response.status}`);
     state.notes = state.notes.filter((item) => item.id !== noteId);
+    await loadRelatedNotes();
     renderNotes();
   } catch (error) {
     appendChatMessage("system", `删除笔记失败：${error instanceof Error ? error.message : "未知错误"}`);
@@ -702,9 +921,33 @@ async function updateNoteComment(noteId, comment) {
     if (!response.ok) throw new Error(result?.error || `HTTP ${response.status}`);
     state.notes = state.notes.map((item) => (item.id === result.note.id ? result.note : item));
     state.editingNoteId = "";
+    await loadRelatedNotes();
     renderNotes();
   } catch (error) {
     appendChatMessage("system", `保存感受失败：${error instanceof Error ? error.message : "未知错误"}`);
+  }
+}
+
+async function updateNoteInsightStatus(noteId, type, insightId, status) {
+  try {
+    const response = await fetch(`${notesApiUrl()}/${encodeURIComponent(noteId)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        insightStatus: {
+          id: insightId,
+          type,
+          status,
+        },
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result?.error || `HTTP ${response.status}`);
+    state.notes = state.notes.map((item) => (item.id === result.note.id ? result.note : item));
+    await loadRelatedNotes();
+    renderNotes();
+  } catch (error) {
+    appendChatMessage("system", `更新照见状态失败：${error instanceof Error ? error.message : "未知错误"}`);
   }
 }
 
@@ -718,13 +961,41 @@ function renderSidePanel() {
 }
 
 function switchSourcePanel(panel) {
+  if (!["source", "auxiliary", "mindmap"].includes(panel)) panel = "source";
+  if (panel === "mindmap" && mindmapTab.hidden) panel = "source";
   state.activeSourcePanel = panel;
+  const isSource = panel === "source";
   const isAuxiliary = panel === "auxiliary";
-  sourceTab.classList.toggle("is-active", !isAuxiliary);
+  const isMindmap = panel === "mindmap";
+  sourceTab.classList.toggle("is-active", isSource);
   auxiliaryTab.classList.toggle("is-active", isAuxiliary);
-  sourceContent.hidden = isAuxiliary;
+  mindmapTab.classList.toggle("is-active", isMindmap);
+  sourceContent.hidden = !isSource;
   auxiliaryContent.hidden = !isAuxiliary;
-  sourceSearch.disabled = isAuxiliary;
+  mindmapContent.hidden = !isMindmap;
+  sourceSearch.disabled = !isSource;
+  return state.activeSourcePanel;
+}
+
+window.__dharmaSwitchSourcePanel = switchSourcePanel;
+
+function updateSourcePanelHash(panel) {
+  const nextHash = sourceHashForPanel(panel);
+  if (window.location.hash === nextHash) return;
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${nextHash}`);
+}
+
+function sourceHashForPanel(panel) {
+  if (panel === "auxiliary") return "#source-auxiliary";
+  if (panel === "mindmap") return "#source-mindmap";
+  return "#source-original";
+}
+
+function sourcePanelFromHash() {
+  if (window.location.hash === "#source-auxiliary") return "auxiliary";
+  if (window.location.hash === "#source-mindmap") return "mindmap";
+  if (window.location.hash === "#source-original") return "source";
+  return "";
 }
 
 function switchSidePanel(panel) {
@@ -753,7 +1024,9 @@ function renderNotes() {
             <time>${formatDateTime(note.createdAt)}</time>
           </div>
           <p class="note-text">${escapeHtml(note.text)}</p>
+          ${renderFeedbackLabels(note.feedbackLabels)}
           ${note.comment ? `<div class="note-comment"><strong>我的感受</strong><p>${escapeHtml(note.comment)}</p></div>` : ""}
+          ${renderNoteInsights(note)}
           ${note.originTitle ? `<div class="note-origin">${escapeHtml(note.originTitle)}</div>` : ""}
           ${state.editingNoteId === note.id ? renderNoteCommentEditor(note) : ""}
           <div class="note-actions">
@@ -765,9 +1038,86 @@ function renderNotes() {
         </article>
       `
       )
-      .join("");
+      .join("") +
+    renderRelatedNotes();
 
   bindNotePanelActions();
+}
+
+function renderNoteInsights(note) {
+  const blackCandidates = Array.isArray(note.insights?.blackCardCandidates) ? note.insights.blackCardCandidates : [];
+  const whiteCandidates = Array.isArray(note.insights?.whiteCardCandidates) ? note.insights.whiteCardCandidates : [];
+  const items = [
+    ...blackCandidates.map((candidate) => ({ ...candidate, type: "black", typeLabel: "黑牌线索" })),
+    ...whiteCandidates.map((candidate) => ({ ...candidate, type: "white", typeLabel: "白牌方向" })),
+  ].filter((candidate) => candidate.status !== "dismissed");
+
+  if (!items.length) return "";
+
+  return `
+    <div class="note-insights">
+      <strong>候选照见</strong>
+      ${items.map((candidate) => renderInsightCandidate(note, candidate)).join("")}
+    </div>
+  `;
+}
+
+function renderFeedbackLabels(labels) {
+  const normalized = (Array.isArray(labels) ? labels : [])
+    .map((id) => FEEDBACK_LABELS.find((item) => item.id === id))
+    .filter(Boolean);
+  if (!normalized.length) return "";
+  return `<div class="feedback-chip-list">${normalized.map((item) => `<span class="feedback-chip">${escapeHtml(item.label)}</span>`).join("")}</div>`;
+}
+
+function renderInsightCandidate(note, candidate) {
+  const isConfirmed = candidate.status === "confirmed";
+  return `
+    <div class="note-insight note-insight-${escapeHtml(candidate.type)}">
+      <div>
+        <span>${escapeHtml(candidate.typeLabel)}</span>
+        <p>${escapeHtml(candidate.label)}</p>
+        ${candidate.evidence ? `<small>${escapeHtml(candidate.evidence)}</small>` : ""}
+      </div>
+      <div class="note-insight-actions">
+        ${
+          isConfirmed
+            ? `<span class="insight-status">已确认</span>`
+            : `<button type="button" data-insight-confirm="${escapeHtml(note.id)}" data-insight-type="${escapeHtml(candidate.type)}" data-insight-id="${escapeHtml(candidate.id)}">确认</button>
+               <button type="button" data-insight-dismiss="${escapeHtml(note.id)}" data-insight-type="${escapeHtml(candidate.type)}" data-insight-id="${escapeHtml(candidate.id)}">忽略</button>`
+        }
+      </div>
+    </div>
+  `;
+}
+
+function renderRelatedNotes() {
+  const related = Array.isArray(state.relatedNotes.relatedNotes) ? state.relatedNotes.relatedNotes : [];
+  if (!related.length) return "";
+
+  return `
+    <section class="related-notes">
+      <h3>相关历史笔记</h3>
+      ${related.map(renderRelatedNote).join("")}
+    </section>
+  `;
+}
+
+function renderRelatedNote(note) {
+  return `
+    <article class="related-note-card">
+      <div class="note-meta">
+        <span>${escapeHtml(note.workspaceTitle || note.workspace || "历史笔记")}</span>
+        <time>${formatDateTime(note.createdAt)}</time>
+      </div>
+      <p>${escapeHtml(compactText(note.text || note.comment || "", 150))}</p>
+      ${note.reason ? `<div class="related-reason">${escapeHtml(note.reason)}</div>` : ""}
+      <div class="note-actions">
+        <button type="button" data-related-context data-related-workspace="${escapeHtml(note.workspace)}" data-related-note-id="${escapeHtml(note.id)}">加入提问</button>
+        <a class="note-link" href="${escapeHtml(note.viewUrl || `/view/${encodeURIComponent(note.workspace || "")}/latest`)}">打开课程</a>
+      </div>
+    </article>
+  `;
 }
 
 function renderNoteCommentEditor(note) {
@@ -784,20 +1134,35 @@ function renderNoteCommentEditor(note) {
 
 function renderNoteComposer() {
   const draft = state.noteDraft;
+  const isFeedbackDraft = draft?.kind === "feedback";
   return `
     <form id="noteComposer" class="note-composer">
       ${draft ? `<div class="note-draft">
         <span>${renderNoteKind(draft.kind)}</span>
         <p>${escapeHtml(compactText(draft.text, 120))}</p>
       </div>` : ""}
+      ${isFeedbackDraft ? renderFeedbackLabelPicker(draft.feedbackLabels || []) : ""}
       <textarea id="noteCommentInput" rows="4" placeholder="${
-        draft ? "写下这段摘录给你的提醒、触动或行动..." : "直接写一条自己的感受..."
+        isFeedbackDraft ? "写一句原因：为什么命中、哪里总结味、哪里不准..." : draft ? "写下这段摘录给你的提醒、触动或行动..." : "直接写一条自己的感受..."
       }" aria-label="写笔记">${draft?.comment ? escapeHtml(draft.comment) : ""}</textarea>
       <div class="note-composer-actions">
         ${draft ? `<button id="cancelNoteDraft" class="secondary-button" type="button">取消摘录</button>` : "<span></span>"}
-        <button id="saveNoteDraft" class="primary-button" type="submit">${draft ? "保存完整笔记" : "保存感受"}</button>
+        <button id="saveNoteDraft" class="primary-button" type="submit">${isFeedbackDraft ? "保存标注" : draft ? "保存完整笔记" : "保存感受"}</button>
       </div>
     </form>
+  `;
+}
+
+function renderFeedbackLabelPicker(selectedLabels) {
+  const selected = new Set(selectedLabels);
+  return `
+    <div class="feedback-label-grid" aria-label="选择校准标签">
+      ${FEEDBACK_LABELS.map((item) => `
+        <button class="feedback-chip${selected.has(item.id) ? " is-selected" : ""}" type="button" data-feedback-label="${escapeHtml(item.id)}">
+          ${escapeHtml(item.label)}
+        </button>
+      `).join("")}
+    </div>
   `;
 }
 
@@ -811,6 +1176,25 @@ function bindNotePanelActions() {
   document.querySelector("#cancelNoteDraft")?.addEventListener("click", () => {
     state.noteDraft = null;
     renderNotes();
+  });
+
+  notesPanel.querySelectorAll("button[data-feedback-label]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const label = button.dataset.feedbackLabel || "";
+      const current = new Set(state.noteDraft?.feedbackLabels || []);
+      if (current.has(label)) {
+        current.delete(label);
+      } else {
+        current.add(label);
+      }
+      state.noteDraft = {
+        ...(state.noteDraft || {}),
+        kind: "feedback",
+        feedbackLabels: [...current],
+      };
+      renderNotes();
+      document.querySelector("#noteCommentInput")?.focus();
+    });
   });
 
   notesPanel.querySelectorAll("button[data-note-context]").forEach((button) => {
@@ -857,6 +1241,25 @@ function bindNotePanelActions() {
   notesPanel.querySelectorAll("button[data-note-delete]").forEach((button) => {
     button.addEventListener("click", () => deleteNote(button.dataset.noteDelete));
   });
+
+  notesPanel.querySelectorAll("button[data-insight-confirm], button[data-insight-dismiss]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const noteId = button.dataset.insightConfirm || button.dataset.insightDismiss || "";
+      const status = button.dataset.insightConfirm ? "confirmed" : "dismissed";
+      await updateNoteInsightStatus(noteId, button.dataset.insightType || "", button.dataset.insightId || "", status);
+    });
+  });
+
+  notesPanel.querySelectorAll("button[data-related-context]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const workspace = button.dataset.relatedWorkspace || "";
+      const noteId = button.dataset.relatedNoteId || "";
+      const note = (state.relatedNotes.relatedNotes || []).find((item) => item.workspace === workspace && item.id === noteId);
+      if (!note) return;
+      addSelectedContext({ kind: note.kind || "reflection", text: noteContextText(note) });
+      switchSidePanel("chat");
+    });
+  });
 }
 
 function openNoteDraft(draft) {
@@ -864,6 +1267,15 @@ function openNoteDraft(draft) {
   switchSidePanel("notes");
   renderNotes();
   document.querySelector("#noteCommentInput")?.focus();
+}
+
+function openFeedbackDraft(draft) {
+  openNoteDraft({
+    kind: "feedback",
+    text: draft.text,
+    quote: draft.quote,
+    feedbackLabels: [],
+  });
 }
 
 async function saveNoteDraft() {
@@ -889,6 +1301,15 @@ async function saveNoteDraft() {
 
 function notesApiUrl() {
   return `/api/view/${encodeURIComponent(currentWorkspace())}/notes`;
+}
+
+function relatedNotesApiUrl() {
+  return `/api/view/${encodeURIComponent(currentWorkspace())}/related-notes`;
+}
+
+function currentNoteThemes() {
+  const themes = state.notes.flatMap((note) => (Array.isArray(note.insights?.themes) ? note.insights.themes : []));
+  return [...new Set(themes.map((theme) => String(theme || "").trim()).filter(Boolean))].slice(0, 8);
 }
 
 function currentWorkspace() {
@@ -1230,7 +1651,9 @@ function highlightEvidence(paragraphId, quote) {
 function clearHighlight(target) {
   if (!target) return;
   const sourceText = target.querySelector(".source-text");
-  if (sourceText) sourceText.innerHTML = formatSourceParagraph(target.dataset.rawText ?? sourceText.textContent);
+  if (sourceText) {
+    sourceText.innerHTML = formatSourceParagraph(target.dataset.rawText ?? sourceText.textContent, target.dataset.kind || "");
+  }
   target.classList.remove("is-highlighted");
 }
 
@@ -1251,7 +1674,41 @@ function markQuote(target, quote) {
   sourceText.innerHTML = `${escapeHtml(before)}<mark>${escapeHtml(exact)}</mark>${escapeHtml(after)}`;
 }
 
-function formatSourceParagraph(text) {
+function sourceParagraphClass(paragraph) {
+  const kind = sourceParagraphKind(paragraph);
+  if (kind === "verse") return "source-verse";
+  if (kind === "subheading") return "source-numbered-heading";
+  return "";
+}
+
+function sourceParagraphKind(paragraph) {
+  if (paragraph?.kind) return paragraph.kind;
+  const parsed = parseNumberedLine(paragraph?.text);
+  if (!parsed.number) return "body";
+  const number = Number(parsed.number);
+  const body = String(parsed.text || "").trim();
+  if (number >= 10 && /[！。？]$/.test(body)) return "verse";
+  if (number < 10 && body.length <= 24 && !/[。！？]$/.test(body)) return "subheading";
+  return "body";
+}
+
+function formatSourceParagraph(text, kind = "") {
+  if (kind === "verse") {
+    const parsed = parseNumberedLine(text);
+    if (parsed.number) {
+      return `<span class="source-verse-number">${escapeHtml(parsed.number)}</span><span class="source-verse-body">${escapeHtml(
+        parsed.text
+      )}</span>`;
+    }
+  }
+
+  if (kind === "subheading") {
+    const parsed = parseNumberedLine(text);
+    if (parsed.number) {
+      return `<strong class="source-numbered-heading-label">${escapeHtml(parsed.number)}. ${escapeHtml(parsed.text)}</strong>`;
+    }
+  }
+
   const subheading = text.match(
     /^(\d+．(?:立足于世间哲学|立足于对神的信仰|立足于人性论和因果观|对永恒问题的追求|对完善人格的追求|对文化艺术的追求|以缘起法审时度势|从缘起法认识空性|有我之爱是有限的|无我才能慈悲大爱|死亡并不是结束|临终关怀))(.+)$/
   );
@@ -1298,6 +1755,7 @@ function formatPageLabel(pageNumbers) {
 function renderNoteKind(kind) {
   if (kind === "analysis") return "分析";
   if (kind === "chat") return "回答";
+  if (kind === "feedback") return "校准";
   if (kind === "reflection") return "感受";
   return "原文";
 }
